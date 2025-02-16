@@ -1,0 +1,255 @@
+---
+title: "Teacher Sentiments on MTSS"
+author: "Gagan Shergill"
+format: revealjs
+editor: visual
+fontsize: 22pt
+theme: sky
+transition: slide
+controls: true
+controls-layout: bottom-right
+---
+
+## Questions
+
+I continue to be interested in exploring what teachers discuss regarding Multitiered Systems of Supports (MTSS) on Reddit. This time however, I am interested in the sentiments of their posts. However, I am mistrustful of our robot overlords, so I am also interested in seeing if sentiment analysis matches my human perception.
+
+Questions:
+
+1.  What is the distribution of sentiments of posts on MTSS on r/Teachers?
+2.  Does VADER's ratings match hand coding?
+
+## Context
+
+The data for this project comes from r/Teachers a subreddit with 1.3 million members and is "dedicated to open discussion about all things teaching". Since MTSS plays a big role in public schools, I thought that this subreddit might contain some insights into how teachers feel about it. Since Reddit allows for anonymous posts to be made, it may allow teachers to express their true opinions regarding MTSS. The primary audience for this research may include researchers interested in conducting sentiment analysis on Reddit data.
+
+## Methods
+
+[**Source:**]{.underline}
+
+Data was scraped using Reddit's API through the RedditExtractoR package. Specifically, I scraped any post that contained "MTSS" or "Multitiered Systems of Supports" resulting in 311 posts.
+
+[**Data Processing:**]{.underline}
+
+I used tidyverse and tidytext for tidying data.
+
+[**Data Analysis:**]{.underline}
+
+To answer Question 1 I mainly use VADER to conduct a sentiment analysis. For Question 2, I hand coded a random sample of 50 posts and rate them as positive, negative, and neutral and calculate VADER's classification accuracy. I used the caret package to calculate classification accuracy and ggplot2 to create a confusion matrix. If you're curious about how to do this analysis, I primarily followed this [post](https://www.geeksforgeeks.org/visualize-confusion-matrix-using-caret-package-in-r/).
+
+## Data Collection 
+
+After running RedditExtractor and getting rid of duplicate posts, we end up with 311 unique posts about MTSS. Check out an example of a (very relateable) post.
+
+```{r}
+#| eval: false
+#| echo: false
+saveRDS(teacher_data_clean, "teacher_data_clean.rds")
+```
+
+```{r}
+#| echo: false
+teacher_data_clean <- readRDS("teacher_data_clean.rds")
+```
+
+```{r}
+library(tidytext)
+library(vader)
+library(tidyverse)
+library(wordcloud2)
+library(RedditExtractoR)
+library(knitr)
+library(tm)
+library(ggplot2)
+library(vader)
+library(caret)
+```
+
+```{r}
+#| eval: false
+# List of keywords
+keywords <- c(
+  "MTSS", "mtss", "Multitiered", "Multitiered Systems of Support"
+)
+
+# List of Keywords
+results_list <- list()
+
+# Loop over each keyword and retrieve data
+for (keyword in keywords) {
+  result <- find_thread_urls(
+    subreddit = "Teachers", 
+    sort_by = "top", 
+    period = "all", 
+    keywords = keyword
+  )
+
+  # Append the result to the list
+  results_list <- append(results_list, list(result))
+}
+
+# Combine all results into a single data frame
+teacher_data_raw <- do.call(rbind, results_list)
+
+# Clean data to remove duplicates and missing values
+teacher_data_clean <- teacher_data_raw %>%
+  distinct()
+
+teacher_data_clean <- teacher_data_raw |> drop_na()
+```
+
+| Example of an MTSS Related Post |
+|----|
+| "Not sure if this is a NC statewide thing or just my school system but why are there SO many acronyms for the most menial things. And people, mostly admin, will regularly use them in conversation to the point that I feel like I need a decryption key to understand. Literally, hey, the WRC yesterday about that OUGS training didnt make sense, I thought we needed GHT and KEiBI for the students before we could JJRF them? Some more examples so maybe yall dont think Im insane: FSI, NWF, WTSS, PSF, ORF, LNF, BOY, EOY, EOG, BOG, CKLA, MTSS, ICC, ISS, OSD, OSS, RF, UMI and on and on unto eternity, I could probably list another 40.  I understand its intended for brevity but it seems so convoluted and unnecessary. It genuinely takes longer to decode these acronyms than it would to just say the full phrase! Thank you for reading my frustration, lol." |
+
+------------------------------------------------------------------------
+
+## Question 1: What are the Sentiments of Posts? 
+
+Once we run VADER and calculate an average for our compound score, we can see that VADER thinks that the majority of posts lean to the positive end. Looking at the ratio of positive to negative posts also indicates that there are more positive than negative posts. Interestingly, no neutral posts were identified indicating that my data may be highly polarized (people have strong opinions about this topic). It is unusual to have no neutral scores, so I will need to validate this output.
+
+```{r}
+#| eval: false
+#| echo: false
+saveRDS(MTSS_sentiments, "MTSS_sentiments.rds")
+```
+
+```{r}
+#| echo: false
+MTSS_sentiments <- readRDS("MTSS_sentiments.rds")
+```
+
+```{r}
+#| eval: false
+MTSS_sentiments <- vader_df(teacher_data_clean$text)
+```
+
+```{r}
+mean_MTSS <- mean(MTSS_sentiments$compound, na.rm = TRUE)
+
+MTSS_sentiments <- MTSS_sentiments |> drop_na()
+
+MTSS_ratio <- MTSS_sentiments |> 
+  mutate(sentiment = ifelse(compound >= 0.05, "positive",
+                            ifelse(compound <= -0.05, "negative", "neutral"))) |>
+  count(sentiment, sort = TRUE) |> 
+  spread(sentiment, n) |> 
+  relocate(positive) |>
+  mutate(ratio = negative/positive)
+```
+
+| Mean Compound Score |
+|:-------------------:|
+|        0.31         |
+
+| Positive  | Neutral | Negative | Ratio |
+|:---------:|:-------:|:--------:|:-----:|
+|    209    |    0    |   102    | 0.49  |
+
+------------------------------------------------------------------------
+
+## Question 2: Does VADER's Ratings Match Hand Coding? 
+
+```{r}
+#| eval: false
+#| echo: false
+saveRDS(sample_MTSS, "sample_MTSS.rds")
+```
+
+```{r}
+#| echo: false
+sample_MTSS  <- readRDS("sample_MTSS.rds")
+```
+
+```{r}
+#| eval: false
+sample_MTSS <- MTSS_sentiments |> sample_n(50)
+```
+
+```{r}
+Human_ratings <- c("Negative", "Negative", "Negative", "Negative", "Neutral", "Negative", "Neutral", "Neutral", "Neutral", "Positive", "Negative", "Positive", "Negative", "Negative", "Neutral", "Positive", "Neutral", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative", "Positive", "Neutral", "Negative", "Negative", "Positive", "Negative", "Neutral", "Negative", "Negative", "Positive", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative", "Neutral", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative", "Negative")
+
+sample_MTSS <- sample_MTSS |> 
+  mutate(
+    sentiment = case_when(
+      compound >= 0.05  ~ "Positive",
+      compound <= -0.05 ~ "Negative",
+      TRUE ~ "Neutral"
+    ),
+    Human_Ratings = Human_ratings
+  )
+```
+
+```{r}
+lvl <- c("Negative", "Neutral", "Positive")
+pred_scores <- factor(sample_MTSS$sentiment, levels = lvl)
+hum_scores <-factor(sample_MTSS$Human_Ratings, levels = lvl)
+
+# Create confusion matrix
+conf_matrix <- confusionMatrix(pred_scores, hum_scores)
+```
+
+::: panel-tabset
+## Explanation
+
+To conduct this analysis, I took a random sample of 50 posts and reviewed them manually, classifying them as positive, negative, or neutral. I then appended my ratings to sample data set and created a confusion matrix, which displays the number of correct classifications (my ratings) that VADER correctly classified as well as where our ratings differed. The total accuracy of VADER was 38%, which is not great. In particular, while VADER was good at classifying positive posts that were actually positive (5 out of 6 correct), it was less accurate with negative posts that were actually negative, classifying 21 as positive when they should be negative. It also misclassified 9 neutral posts as positive. Overall, it appears that VADER classified posts as being more positive than they truly are.
+
+## Graph
+
+```{r}
+# Visualizing Confusion Matrix
+# Convert confusion matrix to a table
+conf_matrix_table <- as.data.frame(conf_matrix$table)
+
+# Rename columns
+colnames(conf_matrix_table) <- c("Actual", "Predicted", "Count")
+
+# Create confusion matrix heatmap
+ggplot(conf_matrix_table, aes(x = Predicted, y = Actual, fill = Count)) +
+  geom_tile(color = "black") +  
+  geom_text(aes(label = Count), color = "white", size = 6) + 
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +  
+  labs(title = "Confusion Matrix",
+       x = "Actual Sentiment",
+       y = "Predicted Sentiment") +
+  theme_minimal() +  
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, face = "bold")
+  )
+```
+:::
+
+------------------------------------------------------------------------
+
+Here is an example of a post that I rated as Neutral, but VADER classified as positive:
+
+|  |
+|----|
+| "I m an IS working in a small school leading the development of our MTSS. In this role, I m giving curriculum guidance to teachers. Our school wide data shows that we have low math proficiency, so I d like to work with our math teachers to choose a new curriculum. Ideally, I m looking for curriculum options that also have tier 2 and tier 3 components.  What math curriculum are you using and what do you like or dislike about that curriculum?" |
+
+------------------------------------------------------------------------
+
+Here also is an example of a post that I rated as Negative, but VADER classified as Positive:
+
+|  |
+|----|
+| The holier-than-thou admins and consultants in charge of American K-12 education are more like fervent religious missionaries who will either convert the nonbelievers or excommunicate those who will not bow down to their God,  'Student-driven,' and whose dogma is MTSS.  On a massive scale, the money is in selling thousands of books to districts who just love throwing money away on the dogma. Because it's all about \*the kids\*, right? |
+
+------------------------------------------------------------------------
+
+## Conclusion
+
+-   Question 1- What is the distribution of sentiments of posts on MTSS on r/Teachers?
+    -   Sentiments classified by VADER appear to be positive overall.
+-   Question 2 - Does VADER's ratings match hand coding?
+    -   No, VADER appears to classify text in a manner that is more positive than what is truly being conveyed. This may indicate that VADER is not well suited to Reddit data overall, or at least data about education.
+
+## Next Steps
+
+-   Implications - Researchers seeking to use VADER should for Reddit data should validate VADER's classification with their own independent review.
+
+-   Limitations - A key limitation is the relatively small (N = 311) sample size, as well as the small number (n = 50) posts used to validate outputs. Future research should increase both for more reliable results.
+
+-   Future Analysis - Given the low classification accuracy of VADER, a supervised machine learning approach may yield improved results.
